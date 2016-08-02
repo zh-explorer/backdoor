@@ -1,0 +1,7 @@
+import os,sys
+import time
+
+print sys.argv
+
+while True:
+    time.sleep(5)
