@@ -221,7 +221,7 @@ def work():
         shell()
     while True:
         for fname in flagList:
-            fp = open(fname)
+            fp = open(fname) 
             flag = fp.read()
             if flag.strip() != flagList[fname]:
                 flagList[fname] = flag.strip()
